@@ -1,8 +1,61 @@
 #sqlx
 
-[![Build Status](https://drone.io/github.com/jmoiron/sqlx/status.png)](https://drone.io/github.com/jmoiron/sqlx/latest) [![Godoc](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/jmoiron/sqlx) [![license](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/jmoiron/sqlx/master/LICENSE)
+[![Build Status](https://drone.io/github.com/larsth/sqlx/status.png)](https://drone.io/github.com/jmoiron/sqlx/latest) [![Godoc](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/larsth/sqlx) [![license](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/larsth/sqlx/master/LICENSE)
 
-sqlx is a library which provides a set of extensions on go's standard
+# Introduction
+
+Package sqlx is the work of GitHub user `jmoiron`. I forked  github.com/jmoiron/sqlx on January the 23rd, 2015.
+ 
+My modified version of sqlx avoids using panic(s). 
+Panics should in my opinon only be used by runtimes to signal fatal events, like fx. fatal programming errors.
+
+Instead of recovering from a panic, you absolutely must take action on every non-nil error that had been returned from this package. You should do that for any non-nil error anyway. 
+
+## Changes relative to github.com/jmoiron/sqlx
+
+Functions and methods that had been deleted, because it panics:
+
+ * Function sqlx.MustOpen
+ * Method sqlx.DB.MustBegin
+ * Method sqlx.DB.MustExec
+ * Method sqlx.Stmt.MustExec
+ * Function sqlx.MustConnect
+ * Function sqlx.MustExec
+ * Method sqlx.NamedStmt.MustExec
+ * Function sqlx.reflectx.mustBe
+ * Method sqlx.Tx.MustExec
+
+### Replaced Function
+
+The private function sqlx.reflectx.mustBe with this signature:
+
+```go
+func mustBe(v Kinder, expected reflect.Kind)
+```
+
+had been replaced by sqlx.reflectx.isKind with this signature:
+
+```go
+func isKind(v Kinder, expected reflect.Kind) (ok bool, err error)
+```
+
+The following list are the names of methods that had been changed because of the change from mustBe to isKind with 2 return values.
+
+ * sqlx.reflectx.Mapper.FieldMap
+ * sqlx.reflectx.Mapper.FieldByName
+ * sqlx.reflectx.Mapper.FieldsByName
+ * sqlx.reflectx.Mapper.TraversalsByName
+
+## Other Changes
+
+ * sqlx.Rows.StructScan changed because of changes to  sqlx.reflectx.Mapper.TraversalsByName
+ * sqlx.bindArgs changed because of changes to  sqlx.reflectx.Mapper.TransversalsByName
+ * sqlx.scanAny changed because of changes to  sqlx.reflectx.Mapper.TransversalsByName
+ * sqlx.scanAll changed because of changes to  sqlx.reflectx.Mapper.TransversalsByName
+
+# What does this package do?
+
+Package sqlx is a library, which provides a set of extensions on go's standard
 `database/sql` library.  The sqlx versions of `sql.DB`, `sql.TX`, `sql.Stmt`,
 et al. all leave the underlying interfaces untouched, so that their interfaces
 are a superset on the standard ones.  This makes it relatively painless to
@@ -15,39 +68,17 @@ Major additional concepts are:
 * `Get` and `Select` to go quickly from query to struct/slice
 * `LoadFile` for executing statements from a file
 
-There is now some [fairly comprehensive documentation](http://jmoiron.github.io/sqlx/) for sqlx.
+jmoiron has a [fairly comprehensive documentation](http://jmoiron.github.io/sqlx/) for sqlx. Just renember that if
+you use github.com/larsth/sqlx, then all Must... functions and methods does not exists.
+
 You can also read the usage below for a quick sample on how sqlx works, or check out the [API
-documentation on godoc](http://godoc.org/github.com/jmoiron/sqlx).
+documentation on godoc](http://godoc.org/github.com/larsth/sqlx).
 
-## Recent Changes
+# Install
 
-The ability to use basic types as Select and Get destinations was added.  This
-is only valid when there is one column in the result set, and both functions
-return an error if this isn't the case.  This allows for much simpler patterns
-of access for single column results:
+    go get github.com/larsth/sqlx
 
-```go
-var count int
-err := db.Get(&count, "SELECT count(*) FROM person;")
-
-var names []string
-err := db.Select(&names, "SELECT name FROM person;")
-```
-
-See the note on Scannability at the bottom of this README for some more info.
-
-### Backwards Compatibility
-
-There is no Go1-like promise of absolute stability, but I take the issue
-seriously and will maintain the library in a compatible state unless vital
-bugs prevent me from doing so.  Since [#59](https://github.com/jmoiron/sqlx/issues/59) and [#60](https://github.com/jmoiron/sqlx/issues/60) necessitated
-breaking behavior, a wider API cleanup was done at the time of fixing.
-
-## install
-
-    go get github.com/jmoiron/sqlx
-
-## issues
+# Issues
 
 Row headers can be ambiguous (`SELECT 1 AS a, 2 AS a`), and the result of
 `Columns()` can have duplicate names on queries like:
@@ -60,10 +91,12 @@ making a struct or map destination ambiguous.  Use `AS` in your queries
 to give rows distinct names, `rows.Scan` to scan them manually, or 
 `SliceScan` to get a slice of results.
 
-## usage
+# Usage
+
+FIXME(larsth): needs cleanup (Must...-methods and functions -> Non-Must functions and methods)
 
 Below is an example which shows some common use cases for sqlx.  Check 
-[sqlx_test.go](https://github.com/jmoiron/sqlx/blob/master/sqlx_test.go) for more
+[sqlx_test.go](https://github.com/larsth/sqlx/blob/master/sqlx_test.go) for more
 usage.  
 
 
@@ -73,7 +106,7 @@ package main
 import (
     _ "github.com/lib/pq"
     "database/sql"
-    "github.com/jmoiron/sqlx"
+    "github.com/larsth/sqlx"
     "log"
 )
 
@@ -114,7 +147,11 @@ func main() {
     // database drivers;  pq will exec them all, sqlite3 won't, ymmv
     db.MustExec(schema)
     
-    tx := db.MustBegin()
+    tx, err := db.Begin()
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	
     tx.MustExec("INSERT INTO person (first_name, last_name, email) VALUES ($1, $2, $3)", "Jason", "Moiron", "jmoiron@jmoiron.net")
     tx.MustExec("INSERT INTO person (first_name, last_name, email) VALUES ($1, $2, $3)", "John", "Doe", "johndoeDNE@gmail.net")
     tx.MustExec("INSERT INTO place (country, city, telcode) VALUES ($1, $2, $3)", "United States", "New York", "1")
@@ -206,13 +243,13 @@ Something is scannable if any of the following are true:
 * It implements the `sql.Scanner` interface
 * It has no exported fields (eg. `time.Time`)
 
-## embedded structs
+## Embedded structs
 
 Scan targets obey Go attribute rules directly, including nested embedded structs.  Older versions of sqlx would attempt to also descend into non-embedded structs, but this is no longer supported.
 
 Go makes *accessing* '[ambiguous selectors](http://play.golang.org/p/MGRxdjLaUc)' a compile time error, defining structs with ambiguous selectors is legal.  Sqlx will decide which field to use on a struct based on a breadth first search of the struct and any structs it embeds, as specified by the order of the fields as accessible by `reflect`, which generally means in source-order.  This means that sqlx chooses the outer-most, top-most matching name for targets, even when the selector might technically be ambiguous.
 
-## scan safety
+## Scan safety
 
 By default, scanning into structs requires the structs to have fields for all of the
 columns in the query.  This was done for a few reasons:

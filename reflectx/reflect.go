@@ -9,6 +9,7 @@ package reflectx
 import "sync"
 
 import (
+	"errors"
 	"reflect"
 	"runtime"
 )
@@ -73,60 +74,77 @@ func (m *Mapper) TypeMap(t reflect.Type) fieldMap {
 
 // FieldMap returns the mapper's mapping of field names to reflect values.  Panics
 // if v's Kind is not Struct, or v is not Indirectable to a struct kind.
-func (m *Mapper) FieldMap(v reflect.Value) map[string]reflect.Value {
+func (m *Mapper) FieldMap(v reflect.Value) (map[string]*reflect.Value, error) {
 	v = reflect.Indirect(v)
-	mustBe(v, reflect.Struct)
 
-	r := map[string]reflect.Value{}
+	if ok, err := isKind(v, reflect.Struct); ok == false {
+		return nil, err
+	}
+
+	r := map[string]*reflect.Value{}
 	nm := m.TypeMap(v.Type())
 	for tagName, indexes := range nm {
 		r[tagName] = FieldByIndexes(v, indexes)
 	}
-	return r
+	return r, nil
 }
 
 // FieldByName returns a field by the its mapped name as a reflect.Value.
 // Panics if v's Kind is not Struct or v is not Indirectable to a struct Kind.
 // Returns zero Value if the name is not found.
-func (m *Mapper) FieldByName(v reflect.Value, name string) reflect.Value {
+func (m *Mapper) FieldByName(v reflect.Value, name string) (*reflect.Value, error) {
 	v = reflect.Indirect(v)
-	mustBe(v, reflect.Struct)
+
+	if ok, err := isKind(v, reflect.Struct); ok == false {
+		return nil, err
+	}
 
 	nm := m.TypeMap(v.Type())
 	traversal, ok := nm[name]
 	if !ok {
-		return *new(reflect.Value)
+		return new(reflect.Value), nil
 	}
-	return FieldByIndexes(v, traversal)
+	return FieldByIndexes(v, traversal), nil
 }
 
 // FieldsByName returns a slice of values corresponding to the slice of names
 // for the value.  Panics if v's Kind is not Struct or v is not Indirectable
 // to a struct Kind.  Returns zero Value for each name not found.
-func (m *Mapper) FieldsByName(v reflect.Value, names []string) []reflect.Value {
+func (m *Mapper) FieldsByName(v reflect.Value, names []string) ([]*reflect.Value, error) {
 	v = reflect.Indirect(v)
-	mustBe(v, reflect.Struct)
+	if ok, err := isKind(v, reflect.Struct); ok == false {
+		return nil, err
+	}
 
 	nm := m.TypeMap(v.Type())
 
-	vals := make([]reflect.Value, 0, len(names))
+	vals := make([]*reflect.Value, 0, len(names))
 	for _, name := range names {
 		traversal, ok := nm[name]
 		if !ok {
-			vals = append(vals, *new(reflect.Value))
+			vals = append(vals, new(reflect.Value))
 		} else {
 			vals = append(vals, FieldByIndexes(v, traversal))
 		}
 	}
-	return vals
+	return vals, nil
 }
 
-// Traversals by name returns a slice of int slices which represent the struct
-// traversals for each mapped name.  Panics if t is not a struct or Indirectable
-// to a struct.  Returns empty int slice for each name not found.
-func (m *Mapper) TraversalsByName(t reflect.Type, names []string) [][]int {
+// TraversalsByName traversals by name and returns a slice of int slices which
+// represent the struct traversals for each mapped name.
+//
+// TraversalsByName returns:
+// 1)
+// Nil, and an error, if t is not a struct or Indirectable
+// to a struct.
+// 2)
+// The empty int slice for each name not found, and an nil error.
+func (m *Mapper) TraversalsByName(t reflect.Type, names []string) ([][]int, error) {
 	t = Deref(t)
-	mustBe(t, reflect.Struct)
+
+	if ok, err := isKind(t, reflect.Struct); ok == false {
+		return nil, err
+	}
 	nm := m.TypeMap(t)
 
 	r := make([][]int, 0, len(names))
@@ -138,11 +156,12 @@ func (m *Mapper) TraversalsByName(t reflect.Type, names []string) [][]int {
 			r = append(r, traversal)
 		}
 	}
-	return r
+
+	return r, nil
 }
 
 // FieldByIndexes returns a value for a particular struct traversal.
-func FieldByIndexes(v reflect.Value, indexes []int) reflect.Value {
+func FieldByIndexes(v reflect.Value, indexes []int) *reflect.Value {
 	for _, i := range indexes {
 		v = reflect.Indirect(v).Field(i)
 		// if this is a pointer, it's possible it is nil
@@ -154,7 +173,7 @@ func FieldByIndexes(v reflect.Value, indexes []int) reflect.Value {
 			v.Set(reflect.MakeMap(v.Type()))
 		}
 	}
-	return v
+	return &v
 }
 
 // FieldByIndexesReadOnly returns a value for a particular struct traversal,
@@ -181,13 +200,18 @@ type Kinder interface {
 	Kind() reflect.Kind
 }
 
-// mustBe checks a value against a kind, panicing with a reflect.ValueError
-// if the kind isn't that which is required.
-func mustBe(v Kinder, expected reflect.Kind) {
+func isKind(v Kinder, expected reflect.Kind) (ok bool, err error) {
 	k := v.Kind()
 	if k != expected {
-		panic(&reflect.ValueError{Method: methodName(), Kind: k})
+		ve := &reflect.ValueError{Method: methodName(), Kind: k}
+		ok = false
+		err = errors.New(ve.Error())
+	} else {
+		ok = true
+		err = nil
 	}
+
+	return
 }
 
 // methodName is returns the caller of the function calling methodName

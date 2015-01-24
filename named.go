@@ -19,7 +19,7 @@ import (
 	"strconv"
 	"unicode"
 
-	"github.com/jmoiron/sqlx/reflectx"
+	"github.com/larsth/sqlx/reflectx"
 )
 
 // NamedStmt is a prepared statement that executes named queries.  Prepare it
@@ -62,15 +62,6 @@ func (n *NamedStmt) QueryRow(arg interface{}) *Row {
 		return &Row{err: err}
 	}
 	return n.Stmt.QueryRowx(args...)
-}
-
-// MustExec execs a NamedStmt, panicing on error
-func (n *NamedStmt) MustExec(arg interface{}) sql.Result {
-	res, err := n.Exec(arg)
-	if err != nil {
-		panic(err)
-	}
-	return res
 }
 
 // Queryx using this NamedStmt
@@ -148,7 +139,10 @@ func bindArgs(names []string, arg interface{}, m *reflectx.Mapper) ([]interface{
 		v = v.Elem()
 	}
 
-	fields := m.TraversalsByName(v.Type(), names)
+	fields, err := m.TraversalsByName(v.Type(), names)
+	if err != nil {
+		return arglist, err
+	}
 	for i, t := range fields {
 		if len(t) == 0 {
 			return arglist, fmt.Errorf("could not find name %s in %#v", names[i], arg)

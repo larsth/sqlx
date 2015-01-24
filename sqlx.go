@@ -11,18 +11,20 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/jmoiron/sqlx/reflectx"
+	"github.com/larsth/sqlx/reflectx"
 )
 
 // Although the NameMapper is convenient, in practice it should not
-// be relied on except for application code.  If you are writing a library
-// that uses sqlx, you should be aware that the name mappings you expect
-// can be overridded by your user's application.
+// be relied on except for application code.
+// If you are writing a library that uses sqlx, you should be aware
+// that the name mappings you expect can be overridded by your user's
+// application.
 
-// NameMapper is used to map column names to struct field names.  By default,
-// it uses strings.ToLower to lowercase struct field names.  It can be set
-// to whatever you want, but it is encouraged to be set before sqlx is used
-// as name-to-field mappings are cached after first use on a type.
+// NameMapper is used to map column names to struct field names.
+// By default, it uses strings.ToLower to lowercase struct field names.
+// It can be set to whatever you want, but it is encouraged to be set
+// before sqlx is used as name-to-field mappings are cached after first
+// use on a type.
 var NameMapper = strings.ToLower
 var origMapper = reflect.ValueOf(NameMapper)
 
@@ -42,8 +44,8 @@ func mapper() *reflectx.Mapper {
 	return mpr
 }
 
-// isScannable takes the reflect.Type and the actual dest value and returns
-// whether or not it's Scannable.  Something is scannable if:
+// isScannable takes the reflect.Type and the actual dest value and
+// returns whether or not it's Scannable.  Something is scannable if:
 //   * it is not a struct
 //   * it implements sql.Scanner
 //   * it has no exported fields
@@ -78,7 +80,7 @@ type Queryer interface {
 	QueryRowx(query string, args ...interface{}) *Row
 }
 
-// Execer is an interface used by MustExec and LoadFile
+// Execer is an interface used by Exec and LoadFile
 type Execer interface {
 	Exec(query string, args ...interface{}) (sql.Result, error)
 }
@@ -249,15 +251,6 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 	return &DB{DB: db, driverName: driverName, Mapper: mapper()}, err
 }
 
-// MustOpen is the same as sql.Open, but returns an *sqlx.DB instead and panics on error.
-func MustOpen(driverName, dataSourceName string) *DB {
-	db, err := Open(driverName, dataSourceName)
-	if err != nil {
-		panic(err)
-	}
-	return db
-}
-
 // MapperFunc sets a new mapper for this db using the default sqlx struct tag
 // and the provided mapper function.
 func (db *DB) MapperFunc(mf func(string) string) {
@@ -302,16 +295,6 @@ func (db *DB) Get(dest interface{}, query string, args ...interface{}) error {
 	return Get(db, dest, query, args...)
 }
 
-// MustBegin starts a transaction, and panics on error.  Returns an *sqlx.Tx instead
-// of an *sql.Tx.
-func (db *DB) MustBegin() *Tx {
-	tx, err := db.Beginx()
-	if err != nil {
-		panic(err)
-	}
-	return tx
-}
-
 // Beginx begins a transaction and returns an *sqlx.Tx instead of an *sql.Tx.
 func (db *DB) Beginx() (*Tx, error) {
 	tx, err := db.DB.Begin()
@@ -334,11 +317,6 @@ func (db *DB) Queryx(query string, args ...interface{}) (*Rows, error) {
 func (db *DB) QueryRowx(query string, args ...interface{}) *Row {
 	rows, err := db.DB.Query(query, args...)
 	return &Row{rows: rows, err: err, unsafe: db.unsafe, Mapper: db.Mapper}
-}
-
-// MustExec (panic) runs MustExec using this database.
-func (db *DB) MustExec(query string, args ...interface{}) sql.Result {
-	return MustExec(db, query, args...)
 }
 
 // Preparex returns an sqlx.Stmt instead of a sql.Stmt
@@ -415,11 +393,6 @@ func (tx *Tx) Get(dest interface{}, query string, args ...interface{}) error {
 	return Get(tx, dest, query, args...)
 }
 
-// MustExec runs MustExec within a transaction.
-func (tx *Tx) MustExec(query string, args ...interface{}) sql.Result {
-	return MustExec(tx, query, args...)
-}
-
 // Preparex  a statement within a transaction.
 func (tx *Tx) Preparex(query string) (*Stmt, error) {
 	return Preparex(tx, query)
@@ -479,12 +452,6 @@ func (s *Stmt) Select(dest interface{}, args ...interface{}) error {
 // Get using the prepared statement.
 func (s *Stmt) Get(dest interface{}, args ...interface{}) error {
 	return Get(&qStmt{*s}, dest, "", args...)
-}
-
-// MustExec (panic) using this statement.  Note that the query portion of the error
-// output will be blank, as Stmt does not expose its query.
-func (s *Stmt) MustExec(args ...interface{}) sql.Result {
-	return MustExec(&qStmt{*s}, "", args...)
 }
 
 // QueryRowx using this statement.
@@ -567,7 +534,11 @@ func (r *Rows) StructScan(dest interface{}) error {
 		}
 		m := r.Mapper
 
-		r.fields = m.TraversalsByName(v.Type(), columns)
+		r.fields, err = m.TraversalsByName(v.Type(), columns)
+		if err != nil {
+			return err
+		}
+
 		// if we are not unsafe and are missing fields, return an error
 		if f, err := missingFields(r.fields); err != nil && !r.unsafe {
 			return fmt.Errorf("missing destination name %s", columns[f])
@@ -596,15 +567,6 @@ func Connect(driverName, dataSourceName string) (*DB, error) {
 	}
 	err = db.Ping()
 	return db, err
-}
-
-// MustConnect connects to a database and panics on error.
-func MustConnect(driverName, dataSourceName string) *DB {
-	db, err := Connect(driverName, dataSourceName)
-	if err != nil {
-		panic(err)
-	}
-	return db
 }
 
 // Preparex prepares a statement.
@@ -662,15 +624,6 @@ func LoadFile(e Execer, path string) (*sql.Result, error) {
 	return &res, err
 }
 
-// MustExec execs the query using e and panics if there was an error.
-func MustExec(e Execer, query string, args ...interface{}) sql.Result {
-	res, err := e.Exec(query, args...)
-	if err != nil {
-		panic(err)
-	}
-	return res
-}
-
 // SliceScan using this Rows.
 func (r *Row) SliceScan() ([]interface{}, error) {
 	return SliceScan(r)
@@ -717,7 +670,10 @@ func (r *Row) scanAny(dest interface{}, structOnly bool) error {
 
 	m := r.Mapper
 
-	fields := m.TraversalsByName(v.Type(), columns)
+	fields, err := m.TraversalsByName(v.Type(), columns)
+	if err != nil {
+		return err
+	}
 	// if we are not unsafe and are missing fields, return an error
 	if f, err := missingFields(fields); err != nil && !r.unsafe {
 		return fmt.Errorf("missing destination name %s", columns[f])
@@ -883,7 +839,10 @@ func scanAll(rows rowsi, dest interface{}, structOnly bool) error {
 			m = mapper()
 		}
 
-		fields := m.TraversalsByName(base, columns)
+		fields, err := m.TraversalsByName(base, columns)
+		if err != err {
+			return err
+		}
 		// if we are not unsafe and are missing fields, return an error
 		if f, err := missingFields(fields); err != nil && !isUnsafe(rows) {
 			return fmt.Errorf("missing destination name %s", columns[f])
